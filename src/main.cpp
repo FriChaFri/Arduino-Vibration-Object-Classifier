@@ -1,18 +1,30 @@
-#include <Arduino.h>
+/*
+ * main.cpp
+ * Entry point. Handles setup/loop and high-level mode selection.
+ */
 
-// put function declarations here:
-int myFunction(int, int);
+#include <Arduino.h>
+#include "config.h"
+#include "imu_lsm6ds3.h"
+#include "features.h"
+#include "model.h"
+#include "modes.h"
 
 void setup() {
-  // put your setup code here, to run once:
-  int result = myFunction(2, 3);
+    Serial.begin(115200);
+    imuInit();
+
+#if RUN_MODE == MODE_COLLECT
+    Serial.println("Mode: DATA COLLECTION");
+#elif RUN_MODE == MODE_INFER
+    Serial.println("Mode: INFERENCE");
+#endif
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-}
-
-// put function definitions here:
-int myFunction(int x, int y) {
-  return x + y;
+#if RUN_MODE == MODE_COLLECT
+    collectLoop();
+#elif RUN_MODE == MODE_INFER
+    inferLoop();
+#endif
 }

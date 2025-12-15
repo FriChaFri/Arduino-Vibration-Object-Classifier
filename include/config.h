@@ -1,26 +1,30 @@
 /*
  * config.h
- * Central configuration for pins, thresholds, and capture parameters.
+ * Project-wide configuration constants (pins, IMU address, printing rates).
  */
 
 #pragma once
+#include <stdint.h>
 
-// I2C pins
+// ---------------- Pins ----------------
 #define PIN_IMU_SDA 18
 #define PIN_IMU_SCL 19
 
-// IMU I2C address
+// ---------------- LSM6DS3TR-C I2C address ----------------
 #define IMU_ADDR 0x6A
 
-// Impact detection
-#define IMPACT_THRESHOLD_MG 200.0f   // trigger threshold (tune later)
+// ---------------- Output rate (summary print) ----------------
+static const uint32_t PRINT_HZ = 50; // lines/sec
+static const uint32_t PRINT_INTERVAL_US = 1000000UL / PRINT_HZ;
 
-// Capture window
-#define CAPTURE_SAMPLES 512          // samples per impact window
+// ---------------- Unit conversions ----------------
+static const float ACCEL_MG_PER_LSB = 0.061f;  // ±2g sensitivity (mg/LSB)
+static const float G_TO_MPS2        = 9.80665f;
 
-// Modes
-#define MODE_COLLECT 1
-#define MODE_INFER   2
+// ---------------- Modes ----------------
+#define MODE_MONITOR  0
+#define MODE_COLLECT  1
+#define MODE_INFER    2
 
-// Select mode here
-#define RUN_MODE MODE_COLLECT
+// Select what the firmware does:
+#define RUN_MODE MODE_MONITOR

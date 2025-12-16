@@ -39,49 +39,42 @@ This configuration allows the plate to ring after impact, producing distinct vib
 
 ## Sensing and Data Capture
 
-* **Sensor:** LSM6DS3TR-C 3-axis accelerometer
-* **Interface:** I2C
+* **Sensor:** LSM6DS3TR-C 3-axis accelerometer over I2C
 * **Sampling:**
 
-  * Accelerometer configured for **high-rate operation (~kHz ODR)**
-  * ±2g full-scale for maximum sensitivity
-  * High-performance mode enabled
+  * Accelerometer configured for **1660 Hz ODR** (1.66 kHz)
+  * ±8 g full-scale to avoid clipping
+  * High-performance mode, gyro powered down
 * **Trigger:**
 
-  * Impact detected via acceleration magnitude threshold
-* **Capture Window:**
+  * Magnitude deviation from a drifting baseline with hysteresis + refractory
+* **Capture Window (staged):**
 
-  * Fixed-length post-impact time window (configurable)
+  * Pre-trigger buffer: 128 samples (full-rate)
+  * Stage A: 1024 samples at full ODR (contains pre-trigger)
+  * Stage B: 1024 samples stored every 4th sample (decimated tail)
+  * Total stored samples: 2048 (covers ~3 seconds at 1.66 kHz)
 
 ---
 
-## Firmware Behavior (Current)
+## Firmware Behavior
 
-The firmware currently supports **impact-triggered capture** and structured serial output.
+Two modes are supported (set `RUN_MODE` in `include/config.h`):
 
-On-device behavior includes:
+* **MODE_MONITOR:** stream summary stats at `PRINT_HZ` to confirm ODR / baseline stability.
+* **MODE_COLLECT:** run the trigger + staged capture and emit binary **IMPACT** packets over serial.
 
-* Continuous accelerometer sampling
-* Acceleration magnitude computation
-* Impact detection with hysteresis and cooldown
-* Fixed-length waveform capture after impact
-* Lightweight feature extraction per impact:
+On-device pipeline:
 
-  * Peak acceleration
-  * RMS acceleration
-  * Peak-to-peak
-  * Simple ring-down decay metric
-* Structured serial output:
-
-  * One CSV feature line per impact
-  * Optional raw waveform output for offline analysis
-
-This validates:
-
-* IMU configuration and timing
-* Trigger robustness
-* Data integrity and repeatability
-* Suitability of signals for classification
+* Poll data-ready and read accel at ~1660 Hz, ±8 g.
+* Maintain a baseline EMA of |a|, trigger on deviation with hysteresis + refractory.
+* Capture staged window: pre-trigger + Stage A (1024 samples) + Stage B (decimated tail, 1024 samples @ /4).
+* Extract features:
+  * peak magnitude + deviation
+  * RMS deviation (stage A)
+  * decay time to 20% of peak
+  * Goertzel band energies at 80 / 160 / 320 / 640 Hz
+* Serialize as binary packet (COBS framed + CRC16) containing metadata + features + raw int16 XYZ samples.
 
 ---
 
@@ -133,22 +126,21 @@ Vibration Classify/
 │   └── config.h           # Pins, constants, modes, tunables
 ├── src/
 │   ├── main.cpp           # Entry point (setup / loop)
-│   ├── imu_lsm6ds3.h      # IMU driver and configuration
-│   ├── modes.h            # Monitor / capture / infer modes
-│   ├── features.h         # Feature extraction
-│   └── model.h            # Classifier / NN inference (future)
+│   ├── imu_lsm6ds3trc.*   # IMU driver and configuration
+│   ├── impact_capture.*   # Trigger + staged capture
+│   ├── features.*         # Feature extraction
+│   └── protocol.*         # Packet framing (COBS + CRC)
 ├── scripts/               # Host-side Python utilities
-│   ├── impact_logger.py
-│   ├── plot_waveforms.py
-│   └── parse_serial_log.py
+│   ├── collect_impacts.py # Labeled dataset collection
+│   ├── protocol.py        # Packet decode helpers
+│   ├── inspect_dataset.py # Quick stats / plots
+│   ├── impact_logger.py   # Legacy CSV logger
+│   └── plot_waveforms.py  # Legacy plotting helper
 ├── python/                # ML and data-processing code
-│   ├── dataset.py
-│   ├── train_mlp.py
-│   └── export_c_header.py
-├── data/                  # Collected datasets (CSV)
-│   └── README.md
-└── test/
-    └── README.md
+│   ├── data_processing.py
+│   ├── model_training.py
+│   └── model_export.py
+└── data/                  # Collected datasets (CSV/NPZ)
 ```
 
 The structure is intentionally minimal while remaining scalable.
@@ -159,18 +151,40 @@ The structure is intentionally minimal while remaining scalable.
 
 This project uses **PlatformIO**.
 
-Typical workflow:
+Build / flash:
 
 ```bash
 pio run
 pio run -t upload
-pio device monitor -b 115200
+pio device monitor -b 921600   # monitor mode only
 ```
 
-Key firmware configuration options (modes, thresholds, window length, output flags) are centralized in:
+Key firmware configuration lives in `include/config.h` (modes, ODR/FS, trigger, window sizes).
 
+**Monitor mode**
+1) Set `RUN_MODE` to `MODE_MONITOR` in `include/config.h`.
+2) Build + upload.
+3) `pio device monitor -b 921600` to view per-axis stats and approx sample rate.
+
+**Collect mode**
+1) Set `RUN_MODE` to `MODE_COLLECT` in `include/config.h` (default).
+2) Build + upload.
+3) Use `scripts/collect_impacts.py` on the host to capture labeled batches:
+
+```bash
+python3 scripts/collect_impacts.py --port /dev/ttyACM0 --baud 921600 --label 0 --count 30 --out data/run_$(date +%Y%m%d_%H%M%S)
+python3 scripts/collect_impacts.py --port /dev/ttyACM0 --baud 921600 --label 1 --count 30 --out data/run_$(date +%Y%m%d_%H%M%S)
 ```
-include/config.h
+
+Each run directory contains:
+* `waves/impact_<id>_label_<x>.npz` with raw int16 XYZ samples, time axis, magnitude.
+* `features.csv` with metadata + features for every impact.
+* `meta.json` capturing run configuration.
+
+Validate separability with:
+
+```bash
+python3 scripts/inspect_dataset.py data/run_YYYYMMDD_HHMMSS --plots
 ```
 
 ---

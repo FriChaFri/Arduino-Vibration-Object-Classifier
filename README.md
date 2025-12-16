@@ -12,6 +12,7 @@ The design prioritizes:
 * High-rate, low-latency sensing
 * Lightweight signal processing suitable for microcontrollers
 * A clear end-to-end pipeline from physics → data → inference
+* Clean separation between embedded firmware and host-side analysis
 
 ---
 
@@ -42,70 +43,83 @@ This configuration allows the plate to ring after impact, producing distinct vib
 * **Interface:** I2C
 * **Sampling:**
 
-  * Accelerometer configured for **6.66 kHz ODR**
+  * Accelerometer configured for **high-rate operation (~kHz ODR)**
   * ±2g full-scale for maximum sensitivity
   * High-performance mode enabled
-* **Trigger (future stage):**
+* **Trigger:**
 
   * Impact detected via acceleration magnitude threshold
-* **Capture Window (future stage):**
+* **Capture Window:**
 
-  * Fixed-length post-impact time window
+  * Fixed-length post-impact time window (configurable)
 
 ---
 
-## Signal Processing (Current)
+## Firmware Behavior (Current)
 
-The current firmware operates in **monitor mode**, continuously:
+The firmware currently supports **impact-triggered capture** and structured serial output.
 
-* Reading raw accelerometer data
-* Converting raw values to physical units (mg, g, m/s²)
-* Accumulating statistics per axis:
+On-device behavior includes:
 
-  * Mean
-  * RMS
+* Continuous accelerometer sampling
+* Acceleration magnitude computation
+* Impact detection with hysteresis and cooldown
+* Fixed-length waveform capture after impact
+* Lightweight feature extraction per impact:
+
+  * Peak acceleration
+  * RMS acceleration
   * Peak-to-peak
-* Printing summary statistics at a controlled rate (default: 50 Hz)
-* Printing approximate sample throughput once per second
+  * Simple ring-down decay metric
+* Structured serial output:
+
+  * One CSV feature line per impact
+  * Optional raw waveform output for offline analysis
 
 This validates:
 
-* IMU configuration
-* Data integrity
-* Vibration observability
+* IMU configuration and timing
+* Trigger robustness
+* Data integrity and repeatability
+* Suitability of signals for classification
 
 ---
 
-## Planned Feature Extraction
+## Host-Side Python Tooling
 
-Future stages will extract low-cost features from the post-impact window, such as:
+All non-embedded tasks are handled **off-device using Python**. This keeps the firmware simple and deterministic while enabling rapid experimentation.
 
-* Peak acceleration magnitude
-* RMS energy
-* Ring-down decay characteristics
-* Coarse frequency-band energy
+Python tooling is used for:
 
-Features are chosen to be:
+* Capturing and parsing serial logs
+* Storing datasets (features and raw waveforms)
+* Visualizing vibration responses
+* Training and evaluating machine learning models
+* Exporting trained model weights to C/C++ headers for Teensy deployment
 
-* Computationally inexpensive
-* Robust to noise
-* Suitable for real-time embedded inference
+Python code lives outside the firmware build system and does **not** run on the Teensy.
 
 ---
 
 ## Machine Learning Approach
 
 * **Model:** Very small neural network (e.g., shallow MLP)
-* **Training:** Offline on collected vibration datasets
+* **Training:** Offline in Python using collected vibration datasets
 * **Deployment:**
 
   * Trained weights embedded directly into firmware
   * Forward pass runs entirely on the Teensy
-* **Classes:** Initially binary (e.g., hard vs soft object)
+* **Classes:** Initially binary (e.g., hard vs. soft impact objects)
 * **Output:**
 
-  * Serial output
-  * Optional LEDs for live demo
+  * Serial classification result
+  * Optional LEDs for live demonstration
+
+The emphasis is on:
+
+* Tiny model size
+* Predictable execution time
+* Feasibility on constrained hardware
 
 ---
 
@@ -114,27 +128,34 @@ Features are chosen to be:
 ```
 Vibration Classify/
 ├── platformio.ini
+├── AGENTS.md              # Codex workflow and constraints
 ├── include/
-│   └── config.h          # Pins, constants, modes
+│   └── config.h           # Pins, constants, modes, tunables
 ├── src/
-│   ├── main.cpp          # Entry point (setup/loop)
-│   ├── imu_lsm6ds3.h     # IMU driver and configuration
-│   ├── modes.h           # Monitor / collect / infer modes
-│   ├── features.h        # Feature extraction (future)
-│   └── model.h           # Classifier / NN inference (future)
-├── lib/
-│   └── README
-├── test/
-│   └── README
-└── data/
-    └── README.md         # Host-side datasets (CSV logs)
+│   ├── main.cpp           # Entry point (setup / loop)
+│   ├── imu_lsm6ds3.h      # IMU driver and configuration
+│   ├── modes.h            # Monitor / capture / infer modes
+│   ├── features.h         # Feature extraction
+│   └── model.h            # Classifier / NN inference (future)
+├── scripts/               # Host-side Python utilities
+│   ├── impact_logger.py
+│   ├── plot_waveforms.py
+│   └── parse_serial_log.py
+├── python/                # ML and data-processing code
+│   ├── dataset.py
+│   ├── train_mlp.py
+│   └── export_c_header.py
+├── data/                  # Collected datasets (CSV)
+│   └── README.md
+└── test/
+    └── README.md
 ```
 
-The structure is intentionally minimal to reduce overhead while remaining scalable.
+The structure is intentionally minimal while remaining scalable.
 
 ---
 
-## Build and Run
+## Build and Run (Firmware)
 
 This project uses **PlatformIO**.
 
@@ -143,10 +164,10 @@ Typical workflow:
 ```bash
 pio run
 pio run -t upload
-pio device monitor
+pio device monitor -b 115200
 ```
 
-Key configuration options (modes, rates, thresholds) are centralized in:
+Key firmware configuration options (modes, thresholds, window length, output flags) are centralized in:
 
 ```
 include/config.h
@@ -158,10 +179,13 @@ include/config.h
 
 * [x] IMU bring-up and verification
 * [x] High-rate accelerometer configuration
-* [x] Continuous vibration monitoring with live statistics
-* [ ] Impact trigger + capture window
-* [ ] Dataset collection (CSV)
-* [ ] Feature extraction pipeline
+* [x] Impact trigger with hysteresis and cooldown
+* [x] Fixed-window waveform capture
+* [x] Per-impact feature extraction
+* [x] Structured serial output (features + optional waveforms)
+* [ ] Dataset labeling
+* [ ] Offline model training in Python
+* [ ] Model export to embedded firmware
 * [ ] On-device classifier inference
 
 ---

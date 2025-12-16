@@ -13,6 +13,7 @@
 #include <math.h>
 #include "config.h"
 #include "imu_lsm6ds3.h"
+#include "features.h"
 
 // ---------------- Stats struct (same behavior as old file) ----------------
 struct AxisStats {
@@ -43,16 +44,86 @@ struct AxisStats {
     float p2p()  const { return (n ? (max_mg - min_mg) : 0.0f); }
 };
 
+static inline float accelMagMg(float ax_mg, float ay_mg, float az_mg) {
+    return sqrtf(ax_mg * ax_mg + ay_mg * ay_mg + az_mg * az_mg);
+}
+
 // ---------------- Monitor loop (call repeatedly from loop()) ----------------
 static inline void monitorLoop() {
+#if ENABLE_CONTINUOUS_STATS
     static AxisStats sx, sy, sz;
     static uint32_t lastPrintUs = 0;
     static uint32_t sampleCount = 0;
     static uint32_t lastRatePrintUs = 0;
+#endif
+    static float captureBuffer[WINDOW_SAMPLES];
+    static size_t captureIndex = 0;
+    static bool capturing = false;
+    static bool triggerArmed = true;
+    static uint32_t captureTimestampMs = 0;
+    static uint32_t lastImpactMs = 0;
+    static uint32_t impactIdCounter = 0;
+    const float releaseThreshold = (TRIGGER_MG > HYST_MG) ? (TRIGGER_MG - HYST_MG) : 0.0f;
 
     // Read accel as fast as practical (I2C is limiting factor)
     float ax_mg, ay_mg, az_mg;
     imuReadAccelMg(ax_mg, ay_mg, az_mg);
+
+    float mag_mg = accelMagMg(ax_mg, ay_mg, az_mg);
+    float delta_mg = fabsf(mag_mg - IMPACT_BASELINE_MG);
+    uint32_t nowMs = millis();
+    bool inCooldown = (impactIdCounter > 0) && ((uint32_t)(nowMs - lastImpactMs) < COOLDOWN_MS);
+
+    if (!capturing && !inCooldown && triggerArmed && delta_mg >= TRIGGER_MG) {
+        capturing = true;
+        captureIndex = 0;
+        captureTimestampMs = nowMs;
+        triggerArmed = false;
+    } else if (!capturing && delta_mg <= releaseThreshold) {
+        triggerArmed = true;
+    }
+
+    if (capturing) {
+        if (captureIndex < WINDOW_SAMPLES) {
+            captureBuffer[captureIndex++] = mag_mg;
+        }
+        if (captureIndex >= WINDOW_SAMPLES) {
+            capturing = false;
+            lastImpactMs = nowMs;
+            FeatureVector fv = computeFeatures(captureBuffer, WINDOW_SAMPLES);
+            uint32_t impactId = impactIdCounter++;
+            Serial.print(impactId);
+            Serial.print(',');
+            Serial.print(captureTimestampMs);
+            Serial.print(',');
+            Serial.print((uint32_t)WINDOW_SAMPLES);
+            Serial.print(',');
+            Serial.print(fv.peak, 2);
+            Serial.print(',');
+            Serial.print(fv.rms, 2);
+            Serial.print(',');
+            Serial.print(fv.p2p, 2);
+            Serial.print(',');
+            Serial.println(fv.decay_ratio, 3);
+
+#if ENABLE_WAVEFORM_OUTPUT
+            Serial.print("waveform,");
+            Serial.print(impactId);
+            Serial.print(',');
+            Serial.print(captureTimestampMs);
+            for (size_t i = 0; i < WINDOW_SAMPLES; ++i) {
+                if ((i % WAVEFORM_DECIMATE) != 0) {
+                    continue;
+                }
+                Serial.print(',');
+                Serial.print(captureBuffer[i], 2);
+            }
+            Serial.println();
+#endif
+        }
+    }
+
+#if ENABLE_CONTINUOUS_STATS
     sampleCount++;
 
     sx.push(ax_mg);
@@ -122,6 +193,7 @@ static inline void monitorLoop() {
         Serial.println(sampleCount);
         sampleCount = 0;
     }
+#endif
 }
 
 // Stubs for other modes (so main.cpp compiles if you switch RUN_MODE)

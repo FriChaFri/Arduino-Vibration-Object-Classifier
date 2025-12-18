@@ -1,0 +1,26 @@
+{
+  "label": "eraser_top",
+  "count": 30,
+  "port": "/dev/ttyACM0",
+  "baud": 921600,
+  "started": "2025-12-16T17:27:34.488432",
+  "config": {
+    "odr_hz": 1660,
+    "fs_g": 8,
+    "stage1_size": 1024,
+    "stage2_size": 1024,
+    "stage2_decimation": 4,
+    "pretrigger_config": 128,
+    "pretrigger_recorded": 128,
+    "mg_per_lsb": 0.24400000274181366,
+    "baseline_mg": 2005.69287109375,
+    "num_bands": 4
+  },
+  "features": [
+    "peak_mag_mg",
+    "peak_dev_mg",
+    "rms_dev_mg",
+    "decay_ms",
+    "band_energy"
+  ]
+}

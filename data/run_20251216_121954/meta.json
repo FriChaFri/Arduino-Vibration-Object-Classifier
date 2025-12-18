@@ -1,0 +1,26 @@
+{
+  "label": "PLA_brick",
+  "count": 10,
+  "port": "/dev/ttyACM0",
+  "baud": 921600,
+  "started": "2025-12-16T12:20:11.962259",
+  "config": {
+    "odr_hz": 1660,
+    "fs_g": 8,
+    "stage1_size": 1024,
+    "stage2_size": 1024,
+    "stage2_decimation": 4,
+    "pretrigger_config": 128,
+    "pretrigger_recorded": 128,
+    "mg_per_lsb": 0.24400000274181366,
+    "baseline_mg": 2005.27783203125,
+    "num_bands": 4
+  },
+  "features": [
+    "peak_mag_mg",
+    "peak_dev_mg",
+    "rms_dev_mg",
+    "decay_ms",
+    "band_energy"
+  ]
+}

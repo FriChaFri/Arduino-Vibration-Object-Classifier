@@ -4,6 +4,13 @@ collect_impacts.py
 
 Batch impact logger with labeling support. Listens for IMPACT packets, saves each
 waveform to NPZ, and appends feature rows to features.csv.
+
+New:
+- Optional interactive review mode (--review) to accept/reject each impact.
+  Rejected impacts do not count toward --count and are not written to CSV/NPZ.
+
+Example use case
+python3 scripts/collect_impacts.py --port /dev/ttyACM0 --baud 921600 --label screw --count 50 --review
 """
 from __future__ import annotations
 
@@ -13,7 +20,7 @@ import json
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import numpy as np
 
@@ -82,7 +89,7 @@ def build_time_axis(pkt: Dict) -> np.ndarray:
     return times
 
 
-def save_npz(wave_dir: Path, pkt: Dict, label: str):
+def save_npz(wave_dir: Path, pkt: Dict, label: str) -> Path:
     cfg = pkt["config"]
     time_s = build_time_axis(pkt)
     mg_per_lsb = float(cfg["mg_per_lsb"])
@@ -119,6 +126,45 @@ def log_run_meta(run_dir: Path, args, cfg: Dict):
     (run_dir / "meta.json").write_text(json.dumps(meta, indent=2))
 
 
+def delete_file_safely(path: Path) -> None:
+    try:
+        path.unlink(missing_ok=True)
+    except Exception as exc:
+        print(f"[warn] could not delete {path.name}: {exc}")
+
+
+def make_feature_row(pkt: Dict, label: str) -> Dict:
+    row = {
+        "impact_id": pkt["impact_id"],
+        "label": label,
+        "timestamp_us": pkt["timestamp_us"],
+        "odr_hz": pkt["config"]["odr_hz"],
+        "fs_g": pkt["config"]["fs_g"],
+        "pretrigger_recorded": pkt["config"]["pretrigger_recorded"],
+        "stage1_count": pkt["stage1_count"],
+        "stage2_count": pkt["stage2_count"],
+        "peak_mag_mg": pkt["features"]["peak_mag_mg"],
+        "peak_dev_mg": pkt["features"]["peak_dev_mg"],
+        "rms_dev_mg": pkt["features"]["rms_dev_mg"],
+        "decay_ms": pkt["features"]["decay_ms"],
+    }
+    for idx, val in enumerate(pkt["features"]["band_energy"]):
+        row[f"band_{idx}"] = val
+    return row
+
+
+def review_prompt(pkt: Dict) -> str:
+    feat = pkt["features"]
+    summary = (
+        f"impact_id={pkt['impact_id']} "
+        f"peak_mag_mg={feat.get('peak_mag_mg'):.2f} "
+        f"rms_dev_mg={feat.get('rms_dev_mg'):.2f} "
+        f"decay_ms={feat.get('decay_ms'):.2f}"
+    )
+    print(f"[review] {summary}")
+    return input("Accept this impact? [Y]es / [r]eject / [q]uit: ").strip().lower()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Collect labeled impact packets and save to disk.")
     parser.add_argument("--port", required=True, help="Serial port, e.g., /dev/ttyACM0")
@@ -126,6 +172,11 @@ def main():
     parser.add_argument("--label", required=True, help="Label applied to this batch (string or int)")
     parser.add_argument("--count", type=int, default=30, help="Number of impacts to record")
     parser.add_argument("--out", type=Path, help="Run directory (default: data/run_<timestamp>)")
+    parser.add_argument(
+        "--review",
+        action="store_true",
+        help="After each impact, prompt to accept/reject it (rejected impacts are discarded and do not count).",
+    )
     args = parser.parse_args()
 
     run_dir = timestamp_dir(args.out)
@@ -134,6 +185,8 @@ def main():
 
     print(f"Run directory: {run_dir}")
     print(f"Listening on {args.port} @ {args.baud} baud for {args.count} impacts labeled '{args.label}'")
+    if args.review:
+        print("Review mode enabled: you will be prompted to accept/reject each impact.")
 
     seen_packets = 0
     header: List[str] | None = None
@@ -158,28 +211,24 @@ def main():
                 if header is None:
                     header = feature_header(len(pkt["features"]["band_energy"]))
 
-                save_npz(wave_dir, pkt, args.label)
+                # Save NPZ first (so a rejected impact can be deleted cleanly)
+                npz_path = save_npz(wave_dir, pkt, args.label)
+                row = make_feature_row(pkt, args.label)
 
-                row = {
-                    "impact_id": pkt["impact_id"],
-                    "label": args.label,
-                    "timestamp_us": pkt["timestamp_us"],
-                    "odr_hz": pkt["config"]["odr_hz"],
-                    "fs_g": pkt["config"]["fs_g"],
-                    "pretrigger_recorded": pkt["config"]["pretrigger_recorded"],
-                    "stage1_count": pkt["stage1_count"],
-                    "stage2_count": pkt["stage2_count"],
-                    "peak_mag_mg": pkt["features"]["peak_mag_mg"],
-                    "peak_dev_mg": pkt["features"]["peak_dev_mg"],
-                    "rms_dev_mg": pkt["features"]["rms_dev_mg"],
-                    "decay_ms": pkt["features"]["decay_ms"],
-                }
-                for idx, val in enumerate(pkt["features"]["band_energy"]):
-                    row[f"band_{idx}"] = val
+                if args.review:
+                    resp = review_prompt(pkt)
+                    if resp in ("q", "quit"):
+                        print("Exiting (user quit).")
+                        break
+                    if resp in ("r", "n", "no", "reject"):
+                        delete_file_safely(npz_path)
+                        print(f"[rejected] impact {pkt['impact_id']} (does not count toward {args.count})")
+                        continue
 
                 append_feature_row(features_path, header, row)
                 seen_packets += 1
                 print(f"[saved] impact {pkt['impact_id']} ({seen_packets}/{args.count})")
+
     except KeyboardInterrupt:
         print("Interrupted, exiting.")
         sys.exit(0)

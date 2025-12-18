@@ -187,6 +187,23 @@ Validate separability with:
 python3 scripts/inspect_dataset.py data/run_YYYYMMDD_HHMMSS --plots
 ```
 
+## Offline Training + Export
+
+Train on CSV feature logs (labels grouped to categories) and export a Teensy-ready header:
+
+```bash
+# Train from all collected runs (CSV only), writes model artifacts under models/latest
+python3 scripts/train_model.py --features-glob "data/run_*/features.csv" --outdir models/latest
+
+# Export scaler + MLP weights/biases + ordered class labels to firmware header
+python3 scripts/export_model.py --modeldir models/latest --out include/model_weights.h
+```
+
+Details:
+* Label grouping: raw labels containing "erasor" → category `erasor`; labels containing "screw" → category `screw`; everything else is dropped (easy to extend later).
+* Feature handling: uses numeric feature columns and ignores IDs/timestamps/config fields (impact_id, timestamp_us, odr_hz, fs_g, stage counts, filenames).
+* Artifacts: `model.joblib`, `label_encoder.joblib`, and `training_metadata.json` in the chosen `models/` subdir; export writes `include/model_weights.h` with scaler stats, weights/bias, feature order, and class names.
+
 ---
 
 ## Current Status
@@ -198,8 +215,8 @@ python3 scripts/inspect_dataset.py data/run_YYYYMMDD_HHMMSS --plots
 * [x] Per-impact feature extraction
 * [x] Structured serial output (features + optional waveforms)
 * [ ] Dataset labeling
-* [ ] Offline model training in Python
-* [ ] Model export to embedded firmware
+* [x] Offline model training in Python (CSV pipeline + grouped labels)
+* [x] Model export to embedded firmware (header generator)
 * [ ] On-device classifier inference
 
 ---

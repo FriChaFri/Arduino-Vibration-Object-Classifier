@@ -9,6 +9,7 @@
 #include "config.h"
 #include "impact_capture.h"
 #include "imu_lsm6ds3trc.h"
+#include "model_infer.h"
 #include "protocol.h"
 
 struct AxisStats {
@@ -55,6 +56,49 @@ inline float magnitudeMg(const AccelSample &s) {
     const float fy = (float)s.y;
     const float fz = (float)s.z;
     return sqrtf(fx * fx + fy * fy + fz * fz) * ACCEL_MG_PER_LSB;
+}
+
+void printFeatureVector(uint32_t impact_id, const float ordered_features[], bool imputed) {
+    Serial.print("features impact=");
+    Serial.print(impact_id);
+    for (size_t i = 0; i < model_weights::kInputDim; ++i) {
+        Serial.print(' ');
+        Serial.print(model_weights::kFeatureNames[i]);
+        Serial.print('=');
+        Serial.print(ordered_features[i], 6);
+    }
+    Serial.print(" imputed=");
+    Serial.println(imputed ? 1 : 0);
+}
+
+void printPrediction(uint32_t impact_id, const model_infer::PredictResult &result) {
+    Serial.print("probs impact=");
+    Serial.print(impact_id);
+    for (size_t i = 0; i < model_weights::kNumClasses; ++i) {
+        Serial.print(' ');
+        Serial.print(model_weights::kClassNames[i]);
+        Serial.print('=');
+        Serial.print(result.probabilities[i], 4);
+    }
+    Serial.print(" pred=");
+    if (result.class_index >= 0 && result.class_index < (int)model_weights::kNumClasses) {
+        Serial.println(model_weights::kClassNames[result.class_index]);
+    } else {
+        Serial.println("unknown");
+    }
+}
+
+void runInferenceAndLog(const ImpactRecord &record) {
+    float ordered[model_weights::kInputDim];
+    model_infer::PredictResult pred{};
+    bool imputed = false;
+    if (!model_infer::predict(record.features, pred, ordered, &imputed)) {
+        Serial.print("infer_error impact=");
+        Serial.println(record.impact_id);
+        return;
+    }
+    printFeatureVector(record.impact_id, ordered, imputed);
+    printPrediction(record.impact_id, pred);
 }
 
 void handleMonitor(const AccelSample &sample, uint32_t now_us) {
@@ -135,6 +179,7 @@ void handleCollect(const AccelSample &sample, uint32_t now_us) {
         Serial.print(" ms rms=");
         Serial.print(readyRecord.features.rms_dev_mg, 1);
         Serial.println(" mg");
+        runInferenceAndLog(readyRecord);
     }
 }
 
@@ -142,6 +187,7 @@ void setup() {
     Serial.begin(SERIAL_BAUD);
     delay(50);
     Serial.println("Teensy vibration capture starting...");
+    model_infer::printModelBanner();
 
     if (!imuBegin()) {
         Serial.println("IMU init failed. Check wiring and power.");

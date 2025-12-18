@@ -1,0 +1,66 @@
+{
+  "created_utc": "2025-12-18T06:57:47+00:00",
+  "command": "./scripts/train_model.py --features-glob data/run_*/features.csv --outdir models/latest --category-rules erasor=erasor,eraser;screw=screw --max-iter 800",
+  "python": "3.12.3 (main, Nov  6 2025, 13:44:16) [GCC 13.3.0]",
+  "platform": "Linux-6.14.0-37-generic-x86_64-with-glibc2.39",
+  "numpy_version": "2.3.5",
+  "sklearn_version": "1.8.0",
+  "features_glob": "data/run_*/features.csv",
+  "feature_files": [
+    "data/run_20251216_121954/features.csv",
+    "data/run_20251216_122330/features.csv",
+    "data/run_20251216_171710/features.csv",
+    "data/run_20251216_172250/features.csv",
+    "data/run_20251216_172729/features.csv",
+    "data/run_20251217_212747/features.csv"
+  ],
+  "feature_names": [
+    "band_0",
+    "band_1",
+    "band_2",
+    "band_3",
+    "decay_ms",
+    "peak_dev_mg",
+    "peak_mag_mg",
+    "rms_dev_mg"
+  ],
+  "category_rules": {
+    "erasor": [
+      "erasor",
+      "eraser"
+    ],
+    "screw": [
+      "screw"
+    ]
+  },
+  "classes": [
+    "erasor",
+    "screw"
+  ],
+  "model_type": "sklearn.Pipeline(imputer->scaler->MLPClassifier)",
+  "mlp_hidden_sizes": [
+    16
+  ],
+  "mlp_max_iter": 800,
+  "random_seed": 42,
+  "train_samples": 112,
+  "val_samples": 28,
+  "val_ratio": 0.2,
+  "val_accuracy": 1.0,
+  "counts_per_category": {
+    "erasor": 90,
+    "screw": 50
+  },
+  "dropped_rows": 20,
+  "confusion_matrix": [
+    [
+      18,
+      0
+    ],
+    [
+      0,
+      10
+    ]
+  ],
+  "classification_report": "              precision    recall  f1-score   support\n\n      erasor       1.00      1.00      1.00        18\n       screw       1.00      1.00      1.00        10\n\n    accuracy                           1.00        28\n   macro avg       1.00      1.00      1.00        28\nweighted avg       1.00      1.00      1.00        28\n"
+}

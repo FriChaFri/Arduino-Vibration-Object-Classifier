@@ -200,7 +200,7 @@ python3 scripts/export_model.py --modeldir models/latest --out include/model_wei
 ```
 
 Details:
-* Label grouping: raw labels containing "erasor" → category `erasor`; labels containing "screw" → category `screw`; everything else is dropped (easy to extend later).
+* Label grouping: raw labels containing "eraser" → category `eraser`; labels containing "screw" → category `screw`; everything else is dropped (easy to extend later).
 * Feature handling: uses numeric feature columns and ignores IDs/timestamps/config fields (impact_id, timestamp_us, odr_hz, fs_g, stage counts, filenames).
 * Artifacts: `model.joblib`, `label_encoder.joblib`, and `training_metadata.json` in the chosen `models/` subdir; export writes `include/model_weights.h` with scaler stats, weights/bias, feature order, and class names.
 

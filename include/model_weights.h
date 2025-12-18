@@ -1,20 +1,27 @@
-// Auto-generated placeholder. Run scripts/export_model.py after training to regenerate with real parameters.
+// Placeholder header.
+// This file is overwritten by scripts/export_model.py after training.
+//
+// Author:
+//     ChatGPT5: EAGER project context
+//     Reviewed and approved by Caleb Hottes.
+
 #pragma once
 #include <cstddef>
 
 namespace model_weights {
+
+constexpr bool kIsTrained = false;
 
 constexpr std::size_t kInputDim = 1;
 constexpr std::size_t kNumClasses = 1;
 constexpr std::size_t kNumLayers = 1;
 
 // Output interpretation:
-// - kBinaryLogit: final neuron logistic → P(class[kLogitPositiveClass]), other class = 1 - P.
-// - kMultiClass: apply softmax to the final layer outputs to align with kClassNames order.
+// - kBinaryLogit: final neuron logistic -> P(class[kLogitPositiveClass]); other class = 1 - P.
+// - kMultiClass: apply softmax to final layer logits; probabilities align with kClassNames order.
 enum class OutputType { kBinaryLogit, kMultiClass };
-constexpr bool kIsTrained = false;
 constexpr OutputType kOutputType = OutputType::kMultiClass;
-constexpr std::size_t kLogitPositiveClass = 0;  // valid only when kOutputType == OutputType::kBinaryLogit
+constexpr std::size_t kLogitPositiveClass = 0;
 
 static const char* const kClassNames[kNumClasses] = {"untrained"};
 static const char* const kFeatureNames[kInputDim] = {"placeholder"};
@@ -26,8 +33,8 @@ static const float kScalerScale[kInputDim] = {1.0f};
 struct Layer {
     std::size_t input_dim;
     std::size_t output_dim;
-    const float* weights;  // row-major [output][input]
-    const float* biases;   // length == output_dim
+    const float* weights; // row-major [output][input]
+    const float* biases;  // length == output_dim
 };
 
 static const float kLayer0Weights[] = {0.0f};
@@ -37,4 +44,4 @@ static const Layer kLayers[kNumLayers] = {
     {1, 1, kLayer0Weights, kLayer0Bias},
 };
 
-}  // namespace model_weights
+} // namespace model_weights

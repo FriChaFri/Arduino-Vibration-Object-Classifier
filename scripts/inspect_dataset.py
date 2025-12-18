@@ -108,7 +108,15 @@ def plot_features(rows: List[Dict], headers: List[str], out_dir: Path):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Inspect a collected impact dataset run directory.")
+    parser = argparse.ArgumentParser(
+        description="Inspect a collected impact dataset run directory.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        epilog=(
+            "Example:\n"
+            "  python3 scripts/inspect_dataset.py data/run_20240101_120000 --plots\n"
+            "Plots are written to <run_dir>/plots when --plots is set."
+        ),
+    )
     parser.add_argument("run_dir", type=Path, help="Run directory (contains features.csv)")
     parser.add_argument("--plots", action="store_true", help="Save feature histograms to run_dir/plots")
     args = parser.parse_args()

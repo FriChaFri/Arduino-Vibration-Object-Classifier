@@ -7,7 +7,7 @@ Pipeline (scikit-learn):
 
 Label grouping:
     Raw CSV `label` strings are mapped into categories using substring rules
-    (default: "erasor" and "screw"). Rows that do not match any category are dropped.
+    (default: "eraser" and "screw"). Rows that do not match any category are dropped.
 
 Artifacts written to --outdir:
     - model.joblib              (sklearn Pipeline)
@@ -73,7 +73,7 @@ DEFAULT_FEATURES_GLOB = "data/run_*/features.csv"
 
 # Default substring rules: category -> list of tokens (case-insensitive).
 DEFAULT_CATEGORY_RULES: Dict[str, Tuple[str, ...]] = {
-    "erasor": ("erasor",),
+    "eraser": ("eraser",),
     "screw": ("screw",),
 }
 
@@ -99,7 +99,7 @@ def _natural_key(s: str) -> Tuple:
 def parse_category_rules(spec: Optional[str]) -> Dict[str, Tuple[str, ...]]:
     """
     Parse a simple rule spec like:
-        "erasor=erasor,eraser;screw=screw,wood_screw"
+        "eraser=eraser,eraser;screw=screw,wood_screw"
     Returns: dict category -> tuple(tokens)
     """
     if not spec:
@@ -344,7 +344,17 @@ def train_and_save(
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Train a small MLP on impact feature CSV files.")
+    p = argparse.ArgumentParser(
+        description="Train a small MLP on impact feature CSV files.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        epilog=(
+            "Example:\n"
+            "  python3 scripts/train_model.py --features-glob \"data/run_*/features.csv\" "
+            "--outdir models/latest --hidden-sizes 16 8 --val-ratio 0.25\n"
+            "Category rule override example:\n"
+            "  --category-rules \"eraser=eraser,erasor;screw=screw,wood_screw\""
+        ),
+    )
     p.add_argument("--features-glob", default=DEFAULT_FEATURES_GLOB, help="Glob for features.csv files.")
     p.add_argument("--outdir", type=Path, default=Path("models") / "latest", help="Output directory for artifacts.")
     p.add_argument("--val-ratio", type=float, default=0.2, help="Validation ratio in (0,1).")
@@ -361,7 +371,7 @@ def parse_args() -> argparse.Namespace:
         "--category-rules",
         type=str,
         default=None,
-        help='Override category rules. Example: "erasor=erasor,eraser;screw=screw,wood_screw"',
+        help='Override category rules. Example: "eraser=eraser,eraser;screw=screw,wood_screw"',
     )
     return p.parse_args()
 

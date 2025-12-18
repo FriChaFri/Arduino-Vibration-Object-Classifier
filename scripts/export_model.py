@@ -433,8 +433,16 @@ def export_model(cfg: ExportConfig) -> None:
 
 
 def parse_args() -> ExportConfig:
-    p = argparse.ArgumentParser(description="Export trained MLP weights to a C header for Teensy inference.")
-    p.add_argument("--modeldir", type=Path, default=Path("models") / "latest", help="Model directory (default: models/latest).")
+    p = argparse.ArgumentParser(
+        description="Export trained MLP weights to a C header for Teensy inference.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        epilog=(
+            "Example:\n"
+            "  python3 scripts/export_model.py --modeldir models/latest --out include/model_weights.h\n"
+            "  (add --sanity-disable if you need to skip the forward-pass sanity check)"
+        ),
+    )
+    p.add_argument("--modeldir", type=Path, default=Path("models") / "latest", help="Model directory.")
     p.add_argument("--out", type=Path, default=Path("include") / "model_weights.h", help="Output header path.")
     p.add_argument("--sanity-samples", type=int, default=10, help="Number of CSV rows to sanity-check.")
     p.add_argument("--sanity-atol", type=float, default=1e-4, help="Absolute tolerance for sanity check.")

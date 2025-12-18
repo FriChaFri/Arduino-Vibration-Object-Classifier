@@ -166,9 +166,18 @@ def review_prompt(pkt: Dict) -> str:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Collect labeled impact packets and save to disk.")
+    parser = argparse.ArgumentParser(
+        description="Collect labeled impact packets and save to disk.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        epilog=(
+            "Example:\n"
+            "  python3 scripts/collect_impacts.py --port /dev/ttyACM0 --baud 921600 "
+            "--label screw --count 50 --out data/run_$(date +%Y%m%d_%H%M%S)\n"
+            "  (add --review to accept/reject each impact interactively)"
+        ),
+    )
     parser.add_argument("--port", required=True, help="Serial port, e.g., /dev/ttyACM0")
-    parser.add_argument("--baud", type=int, default=921600, help="Serial baud rate (default 921600)")
+    parser.add_argument("--baud", type=int, default=921600, help="Serial baud rate")
     parser.add_argument("--label", required=True, help="Label applied to this batch (string or int)")
     parser.add_argument("--count", type=int, default=30, help="Number of impacts to record")
     parser.add_argument("--out", type=Path, help="Run directory (default: data/run_<timestamp>)")

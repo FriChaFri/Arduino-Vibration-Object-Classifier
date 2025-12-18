@@ -123,23 +123,22 @@ Vibration Classify/
 ├── platformio.ini
 ├── AGENTS.md              # Codex workflow and constraints
 ├── include/
-│   └── config.h           # Pins, constants, modes, tunables
+│   ├── config.h           # Pins, constants, modes, tunables
+│   └── model_weights.h    # Exported model parameters (generated)
 ├── src/
 │   ├── main.cpp           # Entry point (setup / loop)
 │   ├── imu_lsm6ds3trc.*   # IMU driver and configuration
 │   ├── impact_capture.*   # Trigger + staged capture
 │   ├── features.*         # Feature extraction
+│   ├── model_infer.*      # Embedded preprocessing + MLP forward + postprocessing
 │   └── protocol.*         # Packet framing (COBS + CRC)
 ├── scripts/               # Host-side Python utilities
-│   ├── collect_impacts.py # Labeled dataset collection
-│   ├── protocol.py        # Packet decode helpers
+│   ├── collect_impacts.py # Binary packet capture -> NPZ + features.csv
 │   ├── inspect_dataset.py # Quick stats / plots
-│   ├── impact_logger.py   # Legacy CSV logger
-│   └── plot_waveforms.py  # Legacy plotting helper
-├── python/                # ML and data-processing code
-│   ├── data_processing.py
-│   ├── model_training.py
-│   └── model_export.py
+│   ├── plot_waveforms.py  # Plot NPZ/CSV waveforms
+│   ├── train_model.py     # Train sklearn MLP on collected features
+│   ├── export_model.py    # Export trained model to include/model_weights.h
+│   └── protocol.py        # Packet decode helpers
 └── data/                  # Collected datasets (CSV/NPZ)
 ```
 
@@ -149,60 +148,72 @@ The structure is intentionally minimal while remaining scalable.
 
 ## Build and Run (Firmware)
 
-This project uses **PlatformIO**.
+This project uses **PlatformIO** (`pio run` / `pio run -t upload`). Key firmware configuration lives in `include/config.h` (modes, ODR/FS, trigger, window sizes).
 
-Build / flash:
-
+**Common commands**
 ```bash
-pio run
-pio run -t upload
-pio device monitor -b 921600   # monitor mode only
+pio run                       # build firmware
+pio run -t upload             # flash to Teensy
+pio device monitor -b 921600  # serial monitor
 ```
 
-Key firmware configuration lives in `include/config.h` (modes, ODR/FS, trigger, window sizes).
+**Mode selection**
+* `MODE_MONITOR`: stream per-axis stats at `PRINT_HZ` to verify ODR/baseline.
+* `MODE_COLLECT` (default): trigger + staged capture, encode binary IMPACT packets, and run on-device inference for each impact.
 
-**Monitor mode**
-1) Set `RUN_MODE` to `MODE_MONITOR` in `include/config.h`.
-2) Build + upload.
-3) `pio device monitor -b 921600` to view per-axis stats and approx sample rate.
+Set `RUN_MODE` in `include/config.h` before building.
 
-**Collect mode**
-1) Set `RUN_MODE` to `MODE_COLLECT` in `include/config.h` (default).
-2) Build + upload.
-3) Use `scripts/collect_impacts.py` on the host to capture labeled batches:
+**What the device prints in MODE_COLLECT**
+* Binary IMPACT packets (for `collect_impacts.py`) framed with COBS + CRC16.
+* Human-readable summary line: `impact <id> peak=<...> mg decay=<...> ms rms=<...> mg`
+* Inference dump:
+  * `features impact=<id> <feature>=<value> ... imputed=0/1`
+  * `probs impact=<id> <class>=<prob> ... pred=<class_name>`
 
+On boot the firmware prints a one-time banner with model metadata (kIsTrained, input dim, output type, class names, feature names).
+
+---
+
+## Host Pipeline (collect → inspect → train → export)
+
+The host-side tools run on Python 3. Install deps with `pip install -r requirements.txt`. Every script has a `-h/--help` that lists defaults and a concrete example command.
+
+1) **Collect data**
 ```bash
-python3 scripts/collect_impacts.py --port /dev/ttyACM0 --baud 921600 --label 0 --count 30 --out data/run_$(date +%Y%m%d_%H%M%S)
-python3 scripts/collect_impacts.py --port /dev/ttyACM0 --baud 921600 --label 1 --count 30 --out data/run_$(date +%Y%m%d_%H%M%S)
+python3 scripts/collect_impacts.py --port /dev/ttyACM0 --baud 921600 \
+  --label screw --count 50 --out data/run_$(date +%Y%m%d_%H%M%S)
 ```
+Outputs per-run `waves/*.npz`, `features.csv`, and `meta.json`. Add `--review` to accept/reject each impact interactively.
 
-Each run directory contains:
-* `waves/impact_<id>_label_<x>.npz` with raw int16 XYZ samples, time axis, magnitude.
-* `features.csv` with metadata + features for every impact.
-* `meta.json` capturing run configuration.
-
-Validate separability with:
-
+2) **Inspect a run**
 ```bash
-python3 scripts/inspect_dataset.py data/run_YYYYMMDD_HHMMSS --plots
+python3 scripts/inspect_dataset.py data/run_20240101_120000 --plots
 ```
+Prints counts and per-feature stats; `--plots` writes histograms to `plots/`.
 
-## Offline Training + Export
-
-Train on CSV feature logs (labels grouped to categories) and export a Teensy-ready header:
-
+3) **Plot waveforms**
 ```bash
-# Train from all collected runs (CSV only), writes model artifacts under models/latest
-python3 scripts/train_model.py --features-glob "data/run_*/features.csv" --outdir models/latest
+python3 scripts/plot_waveforms.py data/run_20240101_120000 --output assets/plots --limit 32
+```
+Generates per-impact PNGs and an optional stacked plot.
 
-# Export scaler + MLP weights/biases + ordered class labels to firmware header
+4) **Train a tiny MLP**
+```bash
+python3 scripts/train_model.py --features-glob "data/run_*/features.csv" \
+  --outdir models/latest --hidden-sizes 16 8 --val-ratio 0.25
+```
+Produces `model.joblib` + `training_metadata.json` under `models/latest`.
+
+5) **Export to firmware**
+```bash
 python3 scripts/export_model.py --modeldir models/latest --out include/model_weights.h
 ```
+Writes `include/model_weights.h` (feature order, scaler stats, weights/biases, class names).
 
 Details:
 * Label grouping: raw labels containing "eraser" → category `eraser`; labels containing "screw" → category `screw`; everything else is dropped (easy to extend later).
 * Feature handling: uses numeric feature columns and ignores IDs/timestamps/config fields (impact_id, timestamp_us, odr_hz, fs_g, stage counts, filenames).
-* Artifacts: `model.joblib`, `label_encoder.joblib`, and `training_metadata.json` in the chosen `models/` subdir; export writes `include/model_weights.h` with scaler stats, weights/bias, feature order, and class names.
+* Artifacts: `model.joblib` and `training_metadata.json` in the chosen `models/` subdir; export writes `include/model_weights.h` with scaler stats, weights/bias, feature order, and class names.
 
 ---
 
@@ -213,11 +224,11 @@ Details:
 * [x] Impact trigger with hysteresis and cooldown
 * [x] Fixed-window waveform capture
 * [x] Per-impact feature extraction
-* [x] Structured serial output (features + optional waveforms)
-* [ ] Dataset labeling
+* [x] Structured serial output (binary packets + human-readable summary)
+* [x] Dataset labeling via host collector (`collect_impacts.py`)
 * [x] Offline model training in Python (CSV pipeline + grouped labels)
 * [x] Model export to embedded firmware (header generator)
-* [ ] On-device classifier inference
+* [x] On-device classifier inference + probability printout
 
 ---
 

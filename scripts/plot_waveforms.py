@@ -233,12 +233,20 @@ def plot_stacked_waveforms(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Plot collected impact waveforms (NPZ or CSV).")
+    parser = argparse.ArgumentParser(
+        description="Plot collected impact waveforms (NPZ or CSV).",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        epilog=(
+            "Example:\n"
+            "  python3 scripts/plot_waveforms.py data/run_20240101_120000 --output assets/plots "
+            "--stacked-output assets/plots/stacked.png --limit 32"
+        ),
+    )
     parser.add_argument(
         "input",
         default="data",
         nargs="?",
-        help="Wave directory, run directory, or single waveform file. (default: data)",
+        help="Wave directory, run directory, or single waveform file.",
     )
     parser.add_argument("--output", type=Path, help="Directory to store per-wave PNGs.")
     parser.add_argument(

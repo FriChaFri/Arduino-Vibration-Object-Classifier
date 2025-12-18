@@ -12,7 +12,8 @@ constexpr std::size_t kNumLayers = 1;
 // - kBinaryLogit: final neuron logistic → P(class[kLogitPositiveClass]), other class = 1 - P.
 // - kMultiClass: apply softmax to the final layer outputs to align with kClassNames order.
 enum class OutputType { kBinaryLogit, kMultiClass };
-constexpr OutputType kOutputType = OutputType::kBinaryLogit;
+constexpr bool kIsTrained = false;
+constexpr OutputType kOutputType = OutputType::kMultiClass;
 constexpr std::size_t kLogitPositiveClass = 0;  // valid only when kOutputType == OutputType::kBinaryLogit
 
 static const char* const kClassNames[kNumClasses] = {"untrained"};

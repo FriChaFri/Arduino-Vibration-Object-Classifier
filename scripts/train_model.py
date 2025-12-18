@@ -16,8 +16,24 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Sequence, Tuple
 
-import joblib
 import numpy as np
+try:
+    import joblib  # type: ignore
+except ImportError:  # pragma: no cover - fallback for minimal environments
+    import pickle
+
+    class _JoblibCompat:
+        @staticmethod
+        def dump(obj, path):
+            with Path(path).open("wb") as f:
+                pickle.dump(obj, f)
+
+        @staticmethod
+        def load(path):
+            with Path(path).open("rb") as f:
+                return pickle.load(f)
+
+    joblib = _JoblibCompat()  # type: ignore
 from sklearn.impute import SimpleImputer
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from sklearn.model_selection import train_test_split

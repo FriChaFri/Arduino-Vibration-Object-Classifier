@@ -1,6 +1,6 @@
 \documentclass[11pt]{article}
 
-\usepackage[margin=1in]{geometry}
+\usepackage[margin=.75in]{geometry}
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
 \usepackage{graphicx}
@@ -28,7 +28,7 @@ Everything is run locally on a Teensy 4.1 chip.
 
 \begin{figure}[ht]
   \centering
-  \includegraphics[width=0.8\linewidth]{figures/device.JPG}
+  \includegraphics[width=0.7\linewidth]{figures/device.JPG}
   \caption{Vibration classifier hardware setup. A Teensy on a breadboard reads an IMU mounted rigidly to the steel plate. The two test objects used in the demo (eraser and screw) are shown resting on the plate. The TPU feet that support/isolate the plate are mounted underneath and are not visible in this photo.}
   \label{fig:device}
 \end{figure}
@@ -39,20 +39,24 @@ An IMU is placed upside down in a 3D printed mount, and that mount is rigidly at
 The Teensy is off to the side and serial outputs are sent to the computer.
 
 \section{Data Acquisition and Impact Triggering}
-The firmware samples the accelerometer at a very high rate, capturing short vibrations. 
-The code detects impacts by checking for spikes in the acceleration, and then logs the accelerometer data slightly before the spike and for a fixed period of time after. 
-The capture window is consistent and captures the entire impact.
+The firmware samples the accelerometer at 1660 Hz and uses a staged capture window after each impact. 
+A small pretrigger buffer (128 samples) is always maintained so the recorded window includes the lead-in to the event. 
+After the trigger fires, the firmware records 1024 full-rate samples, followed by a 1024-sample tail that is decimated by a factor of 4. 
+This gives about 3.1 seconds of total coverage while keeping memory and compute bounded.
+
+The firmware tracks a drifting baseline acceleration magnitude with an exponential moving average, then triggers when $|a|$ deviates far enough from that baseline. 
+Hysteresis is used to re-arm the trigger only after the signal returns close to baseline, and a short refractory lockout prevents immediately re-triggering on the same event.
 
 \section{Feature Extraction and Embedded Processing}
 The magnitude of the acceleration is computed in order to reduce sensitivity to axis alignment and the orientation of the sensor. 
 The peak magnitude provides a simple indicator of initial impact intensity. 
-The RMS energy is computed which summarizes overall vibration strength. 
+The RMS deviation from the baseline is computed over the full-rate stage (stage 1) to summarize overall vibration strength early in the response. 
 A decay related feature captures how quick the vibration energy shrinks after impact. 
 
 \subsection{Waveform Characteristics}
 Figures~\ref{fig:eraser_waveform} and~\ref{fig:screw_waveform} show example acceleration-magnitude waveforms for a single eraser impact and a single screw impact.
 Both signals exhibit a sharp impulse followed by resonant ringing of the plate, but the screw generally produces higher peak magnitudes and a faster decay.
-These differences motivate the use of simple time-domain features rather than more computationally expensive spectral methods.
+These differences motivate the use of simple, embedded-friendly features. Rather than running a full FFT, the firmware also computes a small set of coarse narrow-band energies using Goertzel filters at 80/160/320/640 Hz.
 
 \begin{figure}[ht]
   \centering
@@ -73,8 +77,6 @@ These differences motivate the use of simple time-domain features rather than mo
 \subsection{Repeatability Across Trials}
 Figures~\ref{fig:stacked_eraser} and~\ref{fig:stacked_screw} show stacked acceleration-magnitude waveforms across many trials for the eraser and screw classes.
 Within each class, the overall waveform shape is consistent despite small variations in peak timing and amplitude.
-Between classes, clear differences appear in peak magnitude distribution and decay behavior, which the neural network learns to exploit.
-
 \begin{figure}[ht]
   \centering
   \includegraphics[width=0.95\linewidth]{figures/stacked_waveforms_eraser.png}
@@ -95,7 +97,7 @@ Between classes, clear differences appear in peak magnitude distribution and dec
 A small neural network is trained offline using labeled vibration windows collected on the device. 
 The network takes the extracted features as input and outputs a class probability for each object type.
 The model is kept small to meet memory and timing constraints in order to run locally on the microcontroller. 
-The size of the neural network used in the demo was .
+The size of the neural network used in the demo was 8 inputs $\rightarrow$ 16 hidden units (ReLU) $\rightarrow$ 1 output logit (binary classification), with the same median imputer and standard-scaler preprocessing applied on-device.
 The trained weights are embedded directly into the firmware, meaning that the weights are put into a large matrix in the \texttt{include/model\_weights.h} file. This is done automatically by a python script.
 The classification results are streamed over Serial for demonstration, however in a proper implementation this system would route outputs to the rest of the sorting machine.
 
